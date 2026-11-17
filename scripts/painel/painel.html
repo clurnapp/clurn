@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel do Clurn</title>
+<style nonce="{{NONCE}}">
+:root {
+  --bg: #f4f4f2; --surface: #fcfcfb; --line: #e2e1dc; --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+  --series: #2a78d6; --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121211; --surface: #1a1a19; --line: #2e2e2c; --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e88;
+    --series: #3987e5; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--text-2); font-size: 12px; }
+button { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; margin-left: auto; }
+button:disabled { opacity: .6; cursor: progress; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); margin-bottom: 12px; }
+.card, .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.card .k { color: var(--text-2); font-size: 12px; }
+.card .v { font-size: 22px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.card .d { color: var(--muted); font-size: 12px; }
+.cols { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); margin-bottom: 12px; }
+.alerts { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.alerts li { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; padding: 8px 12px; }
+.alerts li.critico { border-left-color: var(--crit); }
+.alerts li.ok { border-left-color: var(--good); }
+.alerts b { margin-right: 6px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+th { color: var(--text-2); font-weight: 500; font-size: 12px; }
+td.n, th.n { text-align: right; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+.chart .bar { fill: var(--series); }
+.chart .hit { fill: transparent; }
+.chart .hit:hover + .bar, .chart .bar.on { opacity: .75; }
+.chart .axis { stroke: var(--line); }
+.chart .lbl { fill: var(--muted); font-size: 10px; }
+.tip { position: absolute; pointer-events: none; background: var(--text); color: var(--surface); font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -110%); display: none; }
+details { margin-top: 8px; }
+summary { color: var(--text-2); cursor: pointer; font-size: 12px; }
+.meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 6px 0 2px; }
+.meter > span { display: block; height: 100%; background: var(--series); border-radius: 4px; }
+.status { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot.ok { background: var(--good); } .dot.erro { background: var(--crit); }
+.empty { color: var(--muted); }
+#loading { color: var(--text-2); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Painel do Clurn</h1>
+    <span class="sub" id="when"></span>
+    <button id="refresh" type="button">Atualizar</button>
+  </header>
+  <p id="loading">Juntando os dados (a 1ª vez lê toda a carteira da taxa e pode levar alguns minutos)…</p>
+  <ul class="alerts" id="alerts" aria-label="Alertas"></ul>
+  <section class="grid" id="cards" aria-label="Resumo"></section>
+  <section class="cols">
+    <div class="panel"><h2>Taxa recebida por dia (SOL, 30 dias)</h2><div id="ch-fee"></div></div>
+    <div class="panel"><h2>Limpezas pagas por dia</h2><div id="ch-clean"></div></div>
+  </section>
+  <section class="cols">
+    <div class="panel"><h2>Pessoas por dia no proxy (IPs distintos)</h2><div id="ch-ips"></div></div>
+    <div class="panel"><h2>Clientes novos por dia (destinos distintos)</h2><div id="ch-new"></div></div>
+  </section>
+  <section class="cols">
+    <div class="panel"><h2>Versões do app em uso (7 dias)</h2><div id="versions"></div></div>
+    <div class="panel"><h2>Downloads por versão</h2><div id="downloads"></div></div>
+  </section>
+  <section class="cols">
+    <div class="panel"><h2>Proxy hoje</h2><div id="proxy"></div></div>
+    <div class="panel"><h2>Saúde</h2><div id="health"></div></div>
+  </section>
+  <p class="sub">Só dados públicos e contagens: nenhuma frase, chave ou endereço de usuário. Clientes contados por hash do destino. Dias em UTC.</p>
+</main>
+<script nonce="{{NONCE}}">
+'use strict';
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) if (k === 'class') e.className = v; else e.setAttribute(k, v);
+  for (const c of kids) e.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return e;
+};
+const sol = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+const int = (n) => (n == null ? '—' : Math.round(n).toLocaleString('pt-BR'));
+const date = (ms) => (ms ? new Date(ms).toLocaleString('pt-BR') : '—');
+
+function card(k, v, d = '') {
+  return el('div', { class: 'card' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v), el('div', { class: 'd' }, d));
+}
+
+// Barras de uma série: tooltip ao passar o mouse, rótulo só no primeiro e no último dia, tabela ao lado.
+function bars(target, rows, fmt) {
+  target.replaceChildren();
+  if (!rows.length) return target.append(el('p', { class: 'empty' }, 'Sem dados.'));
+  const W = 600, H = 150, pad = 18, max = Math.max(...rows.map((r) => r.v), 0) || 1;
+  const bw = W / rows.length;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('role', 'img');
+  const wrap = el('div', { class: 'chart' });
+  const tip = el('div', { class: 'tip' });
+  rows.forEach((r, i) => {
+    const h = Math.max(r.v > 0 ? 2 : 0, ((H - pad) * r.v) / max);
+    const x = i * bw + 1, w = Math.max(1, bw - 2), y = H - pad - h;
+    const hit = document.createElementNS(NS, 'rect');
+    Object.entries({ x: i * bw, y: 0, width: bw, height: H - pad, class: 'hit' }).forEach(([k, v]) => hit.setAttribute(k, v));
+    const bar = document.createElementNS(NS, 'path');
+    const rr = Math.min(4, w / 2, h);
+    bar.setAttribute('d', h ? `M${x},${H - pad} V${y + rr} Q${x},${y} ${x + rr},${y} H${x + w - rr} Q${x + w},${y} ${x + w},${y + rr} V${H - pad} Z` : '');
+    bar.setAttribute('class', 'bar');
+    hit.addEventListener('mouseenter', () => {
+      bar.classList.add('on');
+      tip.textContent = `${r.d}: ${fmt(r.v)}`;
+      tip.style.left = `${((i + 0.5) * 100) / rows.length}%`;
+      tip.style.top = `${(y / H) * 150}px`;
+      tip.style.display = 'block';
+    });
+    hit.addEventListener('mouseleave', () => { bar.classList.remove('on'); tip.style.display = 'none'; });
+    svg.append(hit, bar);
+  });
+  const axis = document.createElementNS(NS, 'line');
+  Object.entries({ x1: 0, x2: W, y1: H - pad, y2: H - pad, class: 'axis' }).forEach(([k, v]) => axis.setAttribute(k, v));
+  svg.append(axis);
+  for (const [i, anchor] of [[0, 'start'], [rows.length - 1, 'end']]) {
+    const t = document.createElementNS(NS, 'text');
+    Object.entries({ x: anchor === 'start' ? 0 : W, y: H - 4, 'text-anchor': anchor, class: 'lbl' }).forEach(([k, v]) => t.setAttribute(k, v));
+    t.textContent = rows[i].d.slice(5);
+    svg.append(t);
+  }
+  svg.setAttribute('aria-label', `máximo ${fmt(max)}`);
+  wrap.append(svg, tip);
+  const table = el('table', {}, el('tr', {}, el('th', {}, 'Dia'), el('th', { class: 'n' }, 'Valor')));
+  for (const r of [...rows].reverse()) table.append(el('tr', {}, el('td', {}, r.d), el('td', { class: 'n' }, fmt(r.v))));
+  target.append(wrap, el('details', {}, el('summary', {}, 'Ver tabela'), table));
+}
+
+function table(head, rows) {
+  const t = el('table', {}, el('tr', {}, ...head.map(([h, n]) => el('th', n ? { class: 'n' } : {}, h))));
+  for (const r of rows) t.append(el('tr', {}, ...r.map((c, i) => el('td', head[i][1] ? { class: 'n' } : {}, c))));
+  return t;
+}
+
+function render(d) {
+  $('loading').hidden = true;
+  $('when').textContent = `atualizado ${date(d.agora)} · carteira da taxa ${d.carteiraTaxa.slice(0, 4)}…${d.carteiraTaxa.slice(-4)}`;
+  const t = d.taxa, p = d.proxy, rel = d.releases;
+
+  const al = $('alerts');
+  al.replaceChildren();
+  if (!d.alertas.length) al.append(el('li', { class: 'ok' }, el('b', {}, '✓ Tudo certo'), 'nenhum alerta agora.'));
+  for (const a of d.alertas) al.append(el('li', { class: a.nivel }, el('b', {}, a.nivel === 'critico' ? '⛔ Crítico' : '⚠ Atenção'), a.texto));
+  if (d.taxaErro) al.append(el('li', {}, el('b', {}, '⚠ Atenção'), `Carteira da taxa não lida: ${d.taxaErro}`));
+
+  const days = p ? [p.hoje, ...p.historico] : [];
+  const sends = (n) => days.slice(0, n).reduce((a, x) => a + (x.metodos.sendTransaction || 0), 0);
+  $('cards').replaceChildren(
+    card('Taxa recebida (total)', t ? `${sol(t.receitaTotal)} SOL` : '—', t ? `hoje ${sol(t.receitaHoje)} · 7d ${sol(t.receita7d)} · 30d ${sol(t.receita30d)}` : ''),
+    card('Limpezas pagas', t ? int(t.limpezasTotal) : '—', t ? `${int(t.limpezas7d)} nos últimos 7 dias` : ''),
+    card('Clientes (destinos)', t ? int(t.clientesTotal) : '—', t ? `${int(t.clientesNovos7d)} novos em 7d · ${int(t.clientesRecorrentes)} voltaram` : ''),
+    card('Pessoas hoje (proxy)', p ? int(p.hoje.ips) : '—', p ? `${int(p.hoje.pedidos)} pedidos · ${int(p.hoje.creditos)} créditos` : (d.proxyErro || '')),
+    card('Transações enviadas', p ? int(p.hoje.metodos.sendTransaction || 0) : '—', p ? `hoje · ${int(sends(7))} em 7d (pelo proxy)` : ''),
+    card('Downloads', rel ? int(rel.total) : '—', rel && rel.ultima ? `última ${rel.ultima.versao}: ${int(rel.ultima.downloads)}` : 'nenhum Release publicado'),
+    card('Saques da carteira', t ? `${sol(t.saidas)} SOL` : '—', t ? `depósitos ${sol(t.depositos)} · última limpeza ${date(t.ultima)}` : ''),
+  );
+
+  const fd = t ? t.porDia : [];
+  bars($('ch-fee'), fd.map((x) => ({ d: x.dia, v: x.sol })), (v) => `${sol(v)} SOL`);
+  bars($('ch-clean'), fd.map((x) => ({ d: x.dia, v: x.limpezas })), int);
+  bars($('ch-new'), fd.map((x) => ({ d: x.dia, v: x.novos })), int);
+  // 30 dias com zeros nos que o proxy não tem (mesma janela dos gráficos da taxa)
+  const ipsByDay = new Map(days.map((x) => [x.dia, x.ips]));
+  const last30 = Array.from({ length: 30 }, (_, i) => new Date(d.agora - (29 - i) * 86400000).toISOString().slice(0, 10));
+  bars($('ch-ips'), p ? last30.map((dia) => ({ d: dia, v: ipsByDay.get(dia) || 0 })) : [], int);
+
+  $('versions').replaceChildren(d.versoes.length
+    ? table([['Versão'], ['Pedidos', 1], ['%', 1]], d.versoes.map((v) => [v.versao + (rel && rel.ultima && v.versao === rel.ultima.versao ? ' (última)' : ''), int(v.pedidos), `${v.pct.toFixed(1)}%`]))
+    : el('p', { class: 'empty' }, p ? 'Sem pedidos nos últimos 7 dias.' : (d.proxyErro || 'Sem dados do proxy.')));
+  $('downloads').replaceChildren(rel && rel.porVersao.length
+    ? table([['Versão'], ['Publicada'], ['Downloads', 1]], rel.porVersao.map((r) => [r.versao, r.data, int(r.downloads)]))
+    : el('p', { class: 'empty' }, 'Nenhum Release publicado ainda.'));
+
+  const px = $('proxy');
+  px.replaceChildren();
+  if (p) {
+    const pct = p.limites.tetoDia ? Math.min(100, (100 * p.hoje.creditos) / p.limites.tetoDia) : 0;
+    const fill = el('span');
+    fill.style.width = `${pct}%`; // CSSOM: permitido pela CSP (atributo style não seria)
+    px.append(
+      el('div', {}, `Créditos: ${int(p.hoje.creditos)} de ${int(p.limites.tetoDia)} (${pct.toFixed(0)}% do teto do dia)`),
+      el('div', { class: 'meter', role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': pct.toFixed(0), 'aria-label': 'créditos do dia' }, fill),
+    );
+    px.append(table([['Recusas'], ['Hoje', 1]], [['por segundo (rajada)', int(p.hoje.recusas.segundo)], ['cota do IP no dia', int(p.hoje.recusas['dia-ip'])], ['teto da hora', int(p.hoje.recusas['teto-hora'])], ['teto do dia', int(p.hoje.recusas.teto)]]));
+    px.append(table([['Helius'], ['Hoje', 1]], [['fora do ar', int(p.hoje.eventos['upstream-fora'] || 0)], ['lento', int(p.hoje.eventos['upstream-lento'] || 0)], ['chave pausada', int(p.hoje.eventos['chave-pausada'] || 0)], ['todas sem crédito', int(p.hoje.eventos['sem-chave'] || 0)]]));
+    px.append(table([['Chave'], ['Estado']], p.chaves.map((c) => [`nº ${c.posicao}`, c.pausadaAte && c.pausadaAte > d.agora ? `sem crédito até ${date(c.pausadaAte)}` : 'ok'])));
+  } else px.append(el('p', { class: 'empty' }, d.proxyErro || 'Sem dados do proxy.'));
+
+  const s = d.saude;
+  const st = (ok, txt) => el('div', { class: 'status' }, el('span', { class: `dot ${ok ? 'ok' : 'erro'}` }), el('span', {}, `${ok ? 'OK' : 'Falha'} · ${txt}`));
+  const up = s.atualizacao;
+  $('health').replaceChildren(
+    st(s.proxy === 'ok', `proxy rpc.clurn.app${s.proxyMs != null ? ` (${s.proxyMs} ms)` : ''}`),
+    st(s.site === 'ok', 'site clurn.app'),
+    st(up.kind !== 'error', up.kind === 'ok' ? `atualização: versão ${up.versao} assinada e conferida` : up.kind === 'none' ? 'atualização: nenhum Release publicado ainda' : up.kind === 'disabled' ? 'atualização desligada no app' : `atualização: ${up.reason}`),
+  );
+}
+
+async function load(force) {
+  const b = $('refresh');
+  b.disabled = true;
+  try {
+    const r = await fetch(`${location.pathname}/dados${force ? '?forcar=1' : ''}`);
+    render(await r.json());
+  } catch {
+    $('loading').hidden = false;
+    $('loading').textContent = 'Não deu para juntar os dados. Veja o terminal e tente de novo.';
+  } finally {
+    b.disabled = false;
+  }
+}
+$('refresh').addEventListener('click', () => load(true));
+load(false);
+</script>
+</body>
+</html>

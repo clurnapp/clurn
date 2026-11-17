@@ -1,0 +1,34 @@
+# segredos: nunca no repositório
+.env
+.env.*
+secrets/
+*.seed
+*.key
+*.mnemonic
+frase*.txt
+seed*.txt
+
+# relatórios com endereços reais
+relatorios/
+*.report.json
+
+# dependências e lixo
+node_modules/
+*.log
+.DS_Store
+context-engineering.code-workspace
+
+.superpowers/
+
+# vídeos de apresentação: quadros, áudio e MP4 gerados
+video/saida/
+
+# app empacotado (npm run empacotar)
+dist/
+
+# RPC embutido (chave do Helius): só dentro do app empacotado, nunca no repositório
+src/app/rpc-embutido.json
+
+# wrangler: estado local do proxy (proxy/) e da publicação do site; segredos de teste local (.dev.vars teria a chave)
+.wrangler/
+.dev.vars*
