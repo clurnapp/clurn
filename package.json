@@ -18,6 +18,7 @@
     "devnet:preparar": "node scripts/devnet-preparar.ts",
     "chave": "node src/cli/chave.ts",
     "admin": "node scripts/painel-admin.ts",
+    "admin:publicar": "node admin/gerar.ts && npx wrangler@4.151.3 deploy --config admin/wrangler.toml",
     "desktop": "electron .",
     "empacotar": "node scripts/empacotar.ts"
   },

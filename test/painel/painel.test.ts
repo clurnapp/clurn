@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { alerts, feeSummary, LAMPORTS, parseFeeTx, parseProxyStats, releaseSummary, shortHash, versionShare, type FeeTx, type Health } from '../../scripts/painel/metricas.ts';
+import { alerts, feeSummary, LAMPORTS, parseProxyStats, releaseSummary, versionShare, type FeeTx, type Health } from '../../scripts/painel/metricas.ts';
+import { parseFeeTx, shortHash } from '../../scripts/painel/ler-tx.ts';
 
 const FEE = 'CarteiraDaTaxa1111111111111111111111111111';
 const DEST = 'DestinoDoCliente11111111111111111111111111';
@@ -164,6 +165,17 @@ test('painel: servidor só responde em 127.0.0.1 com o código da abertura; pág
     assert.ok(!page.body.includes('TOKEN-DE-TESTE'), 'o token do proxy nunca vai para a página');
     assert.ok(!/innerHTML|insertAdjacentHTML|eval\(/.test(page.body), 'texto de fora só por textContent');
     assert.equal(page.headers['x-frame-options'], 'DENY');
+    // tema do app: fontes e logo só pela lista, só com o código da abertura, nada fora do próprio painel
+    assert.match(csp, /font-src 'self'/);
+    assert.ok(!/https?:\/\//.test(page.body.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, '')), 'nenhum recurso externo');
+    assert.ok(page.body.includes(`/${code}/assets/inter.woff2`) && !page.body.includes('{{CODE}}'));
+    const font = await get(`/${code}/assets/inter.woff2`);
+    assert.equal(font.status, 200);
+    assert.equal(font.headers['content-type'], 'font/woff2');
+    assert.equal((await get(`/${code}/assets/clurn.svg`)).headers['content-type'], 'image/svg+xml');
+    for (const p of [`/assets/inter.woff2`, `/${code}/assets/OFL-inter.txt`, `/${code}/assets/clurn-icone-256.png`, `/${code}/assets/index.html`, `/${code}/assets/../index.html`, `/${code}/assets/%2e%2e%2findex.html`, `/${code}/assets/constructor`, `/${code}/assets/__proto__`]) {
+      assert.equal((await get(p)).status, 404, p);
+    }
   } finally {
     server.close();
     delete process.env.CLURN_STATS_TOKEN;
@@ -177,7 +189,7 @@ test('painel: o código não grava o token nem endereço de cliente; cache fora 
   for (const line of src.split('\n').filter((l) => /console\.(log|error)|\blog\(/.test(l))) {
     assert.ok(!/\$\{[^}]*(token|CLURN_STATS_TOKEN)[^}]*\}|[+,]\s*(token|process\.env\.CLURN_STATS_TOKEN)\s*[),+]/i.test(line), `log com o token: ${line.trim()}`);
   }
-  const metricas = fs.readFileSync(path.join(import.meta.dirname, '..', '..', 'scripts', 'painel', 'metricas.ts'), 'utf8');
+  const metricas = fs.readFileSync(path.join(import.meta.dirname, '..', '..', 'scripts', 'painel', 'ler-tx.ts'), 'utf8');
   assert.match(metricas, /dest: fee > 0 && best >= 0 \? shortHash\(/, 'destino só como hash');
 });
 

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { EXCLUDED, FORBIDDEN_FILE, PUBLIC_DIRS, PUBLIC_ROOT_FILES, forbiddenHash, loadForbidden, publicFiles, scanFiles, scanText as scanWith } from '../scripts/publicar-codigo.ts';
+import { EXCLUDED, EXCLUDED_DIRS, FORBIDDEN_FILE, PUBLIC_DIRS, PUBLIC_ROOT_FILES, forbiddenHash, loadForbidden, publicFiles, scanFiles, scanText as scanWith } from '../scripts/publicar-codigo.ts';
 
 // A lista privada só existe no repositório de trabalho; num clone do código público ela não existe.
 const PRIVATE_LIST = fs.existsSync(path.join(import.meta.dirname, '..', FORBIDDEN_FILE));
@@ -74,12 +74,18 @@ test('público: nenhum arquivo da lista pública tem nome proibido, e-mail pesso
   assert.deepEqual(found, []);
 });
 
+test('público: o painel privado (admin/ e test/admin/) fica fora', () => {
+  assert.ok(EXCLUDED_DIRS.includes('test/admin/'));
+  assert.ok(!publicFiles().some((f) => f.startsWith('test/admin/') || f.startsWith('admin/')));
+});
+
 test('público: a lista leva o app e os testes, e deixa de fora as notas internas, o site e os vídeos', () => {
   const files = publicFiles();
   for (const must of ['src/app/server.ts', 'src/core/features.ts', 'src/app/atualizacao.ts', 'desktop/main.ts', 'test/publico.test.ts', 'package.json', 'LICENCA.md', 'scripts/empacotar.ts']) assert.ok(files.includes(must), must);
   for (const f of files) {
     assert.ok(!/^(docs|site|video|ico)\//.test(f), `fora da lista: ${f}`);
     assert.ok(!['CLAUDE.md', 'wrangler.jsonc'].includes(f), `fora da lista: ${f}`);
+    assert.ok(!f.startsWith('admin/') && !f.startsWith('test/admin/'), `painel privado fora da lista: ${f}`);
     assert.ok(!EXCLUDED.includes(f));
     assert.ok(PUBLIC_ROOT_FILES.includes(f) || PUBLIC_DIRS.some((d) => f.startsWith(d)));
   }

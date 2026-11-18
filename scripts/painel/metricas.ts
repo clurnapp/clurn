@@ -1,46 +1,17 @@
-// Cálculos do painel do autor (scripts/painel-admin.ts). Funções puras: recebem o que veio da rede e devolvem números.
+// Cálculos do painel do autor (scripts/painel-admin.ts e admin/). Funções puras: recebem o que veio da rede e devolvem números.
+// Sem import do Node: roda também no navegador (o painel privado em admin.clurn.app faz as contas na página).
 // Dado de fora (blockchain, GitHub, proxy) pode vir quebrado: item fora do formato é pulado, nunca derruba o resto.
 //
 // Privacidade: o painel conta clientes pelo DESTINO de cada limpeza (a carteira que recebeu os 89%), mas guarda e
 // mostra só um hash curto dele, nunca o endereço. O cache em disco fica fora do repositório (~/.clurn-admin).
-import crypto from 'node:crypto';
 
 export const LAMPORTS = 1_000_000_000;
 const DAY = 86_400_000;
 export const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-export const shortHash = (s: string) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 
 // Uma transação da carteira da taxa: quando, quanto a carteira recebeu (negativo = saída) e o hash do destino.
-export type FeeTx = { sig: string; t: number; fee: number; dest: string | null };
-
-// Lê uma transação do getTransaction (encoding json). null se não for da carteira, tiver erro ou vier fora do formato.
-export function parseFeeTx(sig: string, tx: unknown, feeWallet: string): FeeTx | null {
-  try {
-    const t = tx as any;
-    if (!t?.meta || t.meta.err || typeof t.blockTime !== 'number') return null;
-    const msgKeys: unknown[] = t.transaction?.message?.accountKeys ?? [];
-    const keys = [...msgKeys, ...(t.meta.loadedAddresses?.writable ?? []), ...(t.meta.loadedAddresses?.readonly ?? [])].map((k) => (typeof k === 'string' ? k : (k as any)?.pubkey));
-    const pre: unknown[] = t.meta.preBalances;
-    const post: unknown[] = t.meta.postBalances;
-    if (!Array.isArray(pre) || !Array.isArray(post) || pre.length !== post.length) return null;
-    const at = keys.indexOf(feeWallet);
-    if (at < 0 || typeof pre[at] !== 'number' || typeof post[at] !== 'number') return null;
-    const fee = (post[at] as number) - (pre[at] as number);
-    // destino: a conta (fora a da taxa) que mais recebeu SOL nesta transação
-    let best = -1;
-    let gain = 0;
-    for (let i = 0; i < keys.length && i < pre.length; i++) {
-      const d = (post[i] as number) - (pre[i] as number);
-      if (i !== at && typeof keys[i] === 'string' && Number.isFinite(d) && d > gain) {
-        gain = d;
-        best = i;
-      }
-    }
-    return { sig, t: t.blockTime * 1000, fee, dest: fee > 0 && best >= 0 ? shortHash(keys[best] as string) : null };
-  } catch {
-    return null;
-  }
-}
+// w = qual carteira da taxa (0 = a atual; 1, 2… = as antigas, na ordem de ~/.clurn-admin/carteiras-antigas.txt).
+export type FeeTx = { sig: string; t: number; fee: number; dest: string | null; w?: number };
 
 export type DaySeries = { dia: string; sol: number; limpezas: number; novos: number };
 export type FeeSummary = {
@@ -162,7 +133,7 @@ export type Alert = { nivel: 'critico' | 'atencao'; texto: string };
 export type Health = { proxy: 'ok' | 'erro'; site: 'ok' | 'erro'; atualizacao: { kind: string; versao?: string; reason?: string } };
 
 // O que precisa de atenção agora, do mais grave ao mais leve.
-export function alerts(a: { now: number; proxy: ProxyStats | null; proxyErro: string | null; health: Health; releases: ReleaseSummary | null; fee: FeeSummary | null }): Alert[] {
+export function alerts(a: { now: number; proxy: ProxyStats | null; proxyErro: string | null; health: Health; releases: ReleaseSummary | null; fee: FeeSummary | null; semana?: PeriodSummary | null }): Alert[] {
   const out: Alert[] = [];
   const crit = (texto: string) => out.push({ nivel: 'critico', texto });
   const warn = (texto: string) => out.push({ nivel: 'atencao', texto });
@@ -186,5 +157,315 @@ export function alerts(a: { now: number; proxy: ProxyStats | null; proxyErro: st
     }
   } else if (a.proxyErro) warn(`Estatísticas do proxy indisponíveis: ${a.proxyErro}.`);
   if (a.fee?.ultima && a.now - a.fee.ultima > 2 * DAY) warn('Nenhuma limpeza paga há mais de 2 dias.');
+  const w = a.semana;
+  if (w?.anterior && w.anterior.receita >= 0.05 && w.receita < 0.5 * w.anterior.receita) {
+    warn(`A receita dos últimos 7 dias caiu ${Math.round(100 - (100 * w.receita) / w.anterior.receita)}% em relação aos 7 anteriores.`);
+  }
   return out;
+}
+
+// ---------- visão de dono (17/11/2026): períodos, série completa, coortes, horários, meta do mês ----------
+// Tudo a partir das mesmas transações da carteira da taxa. "Volume recuperado" é estimado pela taxa: a taxa é 11%
+// de todo SOL entregue ao destino (o destino recebe 89%), então volume = taxa ÷ 0,11.
+export const FEE_SHARE = 0.11;
+const BRT_OFFSET = -3 * 3_600_000; // Brasília, UTC−3 fixo (sem horário de verão desde 2019)
+type Paid = FeeTx & { dest: string };
+const paidOf = (txs: FeeTx[]): Paid[] => txs.filter((x): x is Paid => x.fee > 0 && typeof x.dest === 'string' && Number.isFinite(x.t)).sort((a, b) => a.t - b.t);
+const solOf = (list: FeeTx[]) => list.reduce((a, x) => a + x.fee, 0) / LAMPORTS;
+const firstSeenOf = (paid: Paid[]) => {
+  const m = new Map<string, number>();
+  for (const x of paid) if (!m.has(x.dest)) m.set(x.dest, x.t);
+  return m;
+};
+
+export type DayPoint = { dia: string; receita: number; limpezas: number; clientes: number; novos: number; retornos: number };
+
+// Um ponto por dia (UTC), do primeiro dia com limpeza paga até hoje, com no mínimo `minDays` dias (zeros onde não houve
+// nada). novos = clientes cuja 1ª limpeza foi nesse dia; retornos = clientes do dia que já tinham limpado antes.
+export function feeDaily(txs: FeeTx[], now: number, minDays = 90): DayPoint[] {
+  const paid = paidOf(txs);
+  const first = firstSeenOf(paid);
+  const byDay = new Map<string, Paid[]>();
+  for (const x of paid) {
+    const k = utcDay(x.t);
+    (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(x);
+  }
+  const today = Date.parse(utcDay(now));
+  const start = Math.min(today - (minDays - 1) * DAY, paid.length ? Date.parse(utcDay(paid[0]!.t)) : today);
+  const out: DayPoint[] = [];
+  for (let t = start; t <= today; t += DAY) {
+    const dia = utcDay(t);
+    const list = byDay.get(dia) ?? [];
+    const clients = new Set(list.map((x) => x.dest));
+    let novos = 0;
+    for (const c of clients) if (utcDay(first.get(c)!) === dia) novos++;
+    out.push({ dia, receita: solOf(list), limpezas: list.length, clientes: clients.size, novos, retornos: clients.size - novos });
+  }
+  return out;
+}
+
+export type WindowNumbers = { receita: number; volume: number; limpezas: number; clientes: number; novos: number; retornaram: number; ticket: number };
+export type PeriodSummary = WindowNumbers & {
+  dias: number | null; // null = desde o início
+  anterior: WindowNumbers | null; // a janela do mesmo tamanho logo antes (null em "tudo")
+  horas: number[][]; // [dia da semana 0=domingo][hora 0..23], horário de Brasília: limpezas pagas
+  tamanhos: Array<{ faixa: string; limpezas: number; receita: number }>; // por volume recuperado na limpeza
+  top5: number; // fração da receita que veio dos 5 maiores clientes (0..1)
+  maiorLimpeza: number; // maior volume recuperado numa limpeza (SOL)
+};
+
+export const SIZE_EDGES = [0.1, 0.5, 1, 5]; // SOL recuperado (volume), não a taxa
+const SIZE_LABELS = ['até 0,1 SOL', '0,1 a 0,5', '0,5 a 1', '1 a 5', 'mais de 5'];
+
+function windowNumbers(paid: Paid[], first: Map<string, number>, from: number, to: number): WindowNumbers {
+  const list = paid.filter((x) => x.t >= from && x.t < to);
+  const clients = new Set(list.map((x) => x.dest));
+  let novos = 0;
+  for (const c of clients) if (first.get(c)! >= from) novos++;
+  const receita = solOf(list);
+  return { receita, volume: receita / FEE_SHARE, limpezas: list.length, clientes: clients.size, novos, retornaram: clients.size - novos, ticket: list.length ? receita / list.length : 0 };
+}
+
+export function periodSummary(txs: FeeTx[], now: number, days: number | null): PeriodSummary {
+  const paid = paidOf(txs);
+  const first = firstSeenOf(paid);
+  const from = days === null ? -Infinity : now - days * DAY;
+  const to = now + 1;
+  const cur = windowNumbers(paid, first, from, to);
+  const anterior = days === null ? null : windowNumbers(paid, first, now - 2 * days * DAY, from);
+  const list = paid.filter((x) => x.t >= from && x.t < to);
+  const horas = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+  const tamanhos = SIZE_LABELS.map((faixa) => ({ faixa, limpezas: 0, receita: 0 }));
+  const perClient = new Map<string, number>();
+  let maiorLimpeza = 0;
+  for (const x of list) {
+    const d = new Date(x.t + BRT_OFFSET);
+    horas[d.getUTCDay()]![d.getUTCHours()]!++;
+    const vol = x.fee / LAMPORTS / FEE_SHARE;
+    maiorLimpeza = Math.max(maiorLimpeza, vol);
+    // tolerância de ponto flutuante: 0,011 ÷ 0,11 dá 0,0999…, e essa limpeza é de 0,1 SOL (2ª faixa)
+    let i = SIZE_EDGES.findIndex((e) => vol < e * (1 - 1e-9));
+    if (i < 0) i = SIZE_EDGES.length;
+    tamanhos[i]!.limpezas++;
+    tamanhos[i]!.receita += x.fee / LAMPORTS;
+    perClient.set(x.dest, (perClient.get(x.dest) ?? 0) + x.fee);
+  }
+  const ranked = [...perClient.values()].sort((a, b) => b - a);
+  const total = ranked.reduce((a, b) => a + b, 0);
+  const top5 = total ? ranked.slice(0, 5).reduce((a, b) => a + b, 0) / total : 0;
+  return { ...cur, dias: days, anterior, horas, tamanhos, top5, maiorLimpeza };
+}
+
+export type Cohort = { semana: string; tamanho: number; retencao: number[] };
+// Coortes semanais (semana começa na segunda, UTC): clientes pela semana da 1ª limpeza e a fração deles que limpou em
+// cada semana seguinte. retencao[0] = 1 (a própria semana); só entram as semanas que já começaram.
+export function weeklyCohorts(txs: FeeTx[], now: number, weeks = 8): Cohort[] {
+  const paid = paidOf(txs);
+  const first = firstSeenOf(paid);
+  const weekStart = (t: number) => {
+    const d = Date.parse(utcDay(t));
+    return d - ((new Date(d).getUTCDay() + 6) % 7) * DAY;
+  };
+  const nowWeek = weekStart(now);
+  const active = new Map<string, Set<number>>();
+  for (const x of paid) (active.get(x.dest) ?? active.set(x.dest, new Set()).get(x.dest)!).add(weekStart(x.t));
+  const out: Cohort[] = [];
+  for (let k = weeks - 1; k >= 0; k--) {
+    const w = nowWeek - k * 7 * DAY;
+    const members = [...first].filter(([, t]) => weekStart(t) === w).map(([c]) => c);
+    if (!members.length) continue;
+    const retencao: number[] = [];
+    for (let j = 0; w + j * 7 * DAY <= nowWeek; j++) retencao.push(members.filter((c) => active.get(c)!.has(w + j * 7 * DAY)).length / members.length);
+    out.push({ semana: utcDay(w), tamanho: members.length, retencao });
+  }
+  return out;
+}
+
+export type MonthPace = { mes: string; receita: number; diasPassados: number; diasNoMes: number; projecao: number; mesAnterior: number };
+// Mês corrente (UTC): receita até agora e o ritmo projetado para o mês inteiro (média por dia decorrido × dias do mês).
+// Antes de completar 1 dia, a projeção é a própria receita (média de poucas horas engana).
+export function monthPace(txs: FeeTx[], now: number): MonthPace {
+  const d = new Date(now);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const start = Date.UTC(y, m, 1);
+  const prevStart = Date.UTC(y, m - 1, 1);
+  const diasNoMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const diasPassados = (now - start) / DAY;
+  const paid = paidOf(txs);
+  const receita = solOf(paid.filter((x) => x.t >= start && x.t <= now));
+  return {
+    mes: utcDay(start).slice(0, 7),
+    receita,
+    diasPassados,
+    diasNoMes,
+    projecao: diasPassados >= 1 ? (receita / diasPassados) * diasNoMes : receita,
+    mesAnterior: solOf(paid.filter((x) => x.t >= prevStart && x.t < start)),
+  };
+}
+
+export type RecentRow = { t: number; taxa: number; volume: number; cliente: string; novo: boolean; sig: string };
+// As últimas limpezas pagas, a mais recente primeiro. Cliente = 6 primeiros caracteres do hash do destino.
+export function recentCleanups(txs: FeeTx[], n = 20): RecentRow[] {
+  const paid = paidOf(txs);
+  const firstSig = new Map<string, string>();
+  for (const x of paid) if (!firstSig.has(x.dest)) firstSig.set(x.dest, x.sig);
+  return paid
+    .slice(-n)
+    .reverse()
+    .map((x) => ({ t: x.t, taxa: x.fee / LAMPORTS, volume: x.fee / LAMPORTS / FEE_SHARE, cliente: x.dest.slice(0, 6), novo: firstSig.get(x.dest) === x.sig, sig: x.sig }));
+}
+
+export type UsageDay = { dia: string; pessoas: number; pedidos: number; creditos: number; envios: number; clientes: number };
+export type UsageSummary = { serie: UsageDay[]; diasComProxy: number; pessoasMedia: number; envios: number; creditos: number; conversao: number | null };
+// Uso pelo proxy nos últimos `days` dias (hoje incluído), cruzado com os clientes pagantes do mesmo dia.
+// conversao = Σ clientes pagantes por dia ÷ Σ pessoas (IPs distintos) por dia, só nos dias que o proxy registrou.
+// Aproximado: IP não é pessoa, e quem usa o RPC público não passa pelo proxy.
+export function usageSummary(p: ProxyStats | null, daily: DayPoint[], days: number): UsageSummary {
+  const proxyDays = new Map((p ? [p.hoje, ...p.historico] : []).map((d) => [d.dia, d]));
+  const clientsByDay = new Map(daily.map((d) => [d.dia, d.clientes]));
+  const serie = daily.slice(-days).map(({ dia }) => {
+    const x = proxyDays.get(dia);
+    return { dia, pessoas: x?.ips ?? 0, pedidos: x?.pedidos ?? 0, creditos: x?.creditos ?? 0, envios: x?.metodos.sendTransaction ?? 0, clientes: clientsByDay.get(dia) ?? 0 };
+  });
+  const withProxy = serie.filter((s) => proxyDays.has(s.dia));
+  const ips = withProxy.reduce((a, s) => a + s.pessoas, 0);
+  return {
+    serie,
+    diasComProxy: withProxy.length,
+    pessoasMedia: withProxy.length ? ips / withProxy.length : 0,
+    envios: serie.reduce((a, s) => a + s.envios, 0),
+    creditos: serie.reduce((a, s) => a + s.creditos, 0),
+    conversao: ips ? withProxy.reduce((a, s) => a + s.clientes, 0) / ips : null,
+  };
+}
+
+// ---------- histórico (17/11/2026): carteiras antigas da taxa, semanas e meses, recordes, falhas ----------
+// As carteiras antigas ficam num arquivo do autor fora do repositório (o código é público e a carteira antiga
+// saiu dele de propósito, commit d9ec553). Uma por linha: "<endereço> [desde AAAA-MM-DD]"; # comenta.
+// Sem data, conta desde o início da beta: o que a carteira fez antes não é do app.
+export const BETA_START = Date.UTC(2026, 9, 30);
+const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+export type OldWallet = { endereco: string; desde: number };
+export function parseWalletList(text: string, current: string): OldWallet[] {
+  const out: OldWallet[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim();
+    if (!line) continue;
+    const [addr, since] = line.split(/\s+/);
+    if (!addr || !BASE58.test(addr) || addr === current || out.some((w) => w.endereco === addr)) continue;
+    const t = since && /^\d{4}-\d{2}-\d{2}$/.test(since) ? Date.parse(`${since}T00:00:00Z`) : NaN;
+    out.push({ endereco: addr, desde: Number.isFinite(t) ? t : BETA_START });
+  }
+  return out;
+}
+
+export type HistoryRow = { inicio: string; fim: string; receita: number; volume: number; limpezas: number; clientes: number; novos: number; ticket: number; porCarteira: number[]; falhas: number };
+// Semanas (segunda a domingo, UTC) ou meses, da 1ª limpeza paga até hoje, o mais recente por último.
+// porCarteira[w] = receita de cada carteira da taxa (0 = atual). falhas = transações com erro que tocaram a carteira.
+export function historyBuckets(txs: FeeTx[], now: number, unit: 'semana' | 'mes', failed: Array<{ t: number }> = []): HistoryRow[] {
+  const paid = paidOf(txs);
+  if (!paid.length) return [];
+  const first = firstSeenOf(paid);
+  const startOf = (t: number) => {
+    const d = new Date(Date.parse(utcDay(t)));
+    if (unit === 'mes') return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+    return d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY;
+  };
+  const next = (s: number) => (unit === 'mes' ? Date.UTC(new Date(s).getUTCFullYear(), new Date(s).getUTCMonth() + 1, 1) : s + 7 * DAY);
+  const walletCount = Math.max(1, ...paid.map((x) => (x.w ?? 0) + 1));
+  const out: HistoryRow[] = [];
+  for (let s = startOf(paid[0]!.t); s <= now; s = next(s)) {
+    const e = next(s);
+    const list = paid.filter((x) => x.t >= s && x.t < e);
+    const clients = new Set(list.map((x) => x.dest));
+    let novos = 0;
+    for (const c of clients) if (first.get(c)! >= s) novos++;
+    const receita = solOf(list);
+    const porCarteira = new Array<number>(walletCount).fill(0);
+    for (const x of list) porCarteira[x.w ?? 0]! += x.fee / LAMPORTS;
+    out.push({ inicio: utcDay(s), fim: utcDay(Math.min(e, now + DAY) - DAY), receita, volume: receita / FEE_SHARE, limpezas: list.length, clientes: clients.size, novos, ticket: list.length ? receita / list.length : 0, porCarteira, falhas: failed.filter((f) => f.t >= s && f.t < e).length });
+  }
+  return out;
+}
+
+export type Records = {
+  primeira: number | null;
+  diasComLimpeza: number;
+  melhorDia: { dia: string; receita: number; limpezas: number } | null;
+  maisLimpezasDia: { dia: string; limpezas: number } | null;
+  melhorSemana: { inicio: string; receita: number } | null;
+  maiorLimpeza: { t: number; volume: number } | null;
+  receitaTotal: number;
+  volumeTotal: number;
+  limpezasTotal: number;
+  clientesTotal: number;
+  sucesso: number | null; // limpezas ÷ (limpezas + transações com erro), desde o início
+};
+export function records(txs: FeeTx[], now: number, failed: Array<{ t: number }> = []): Records {
+  const paid = paidOf(txs);
+  const daily = feeDaily(txs, now, 1).filter((d) => d.limpezas > 0);
+  const weeks = historyBuckets(txs, now, 'semana');
+  const best = <T,>(list: T[], key: (x: T) => number) => list.reduce<T | null>((b, x) => (b === null || key(x) > key(b) ? x : b), null);
+  const bd = best(daily, (d) => d.receita);
+  const ld = best(daily, (d) => d.limpezas);
+  const bw = best(weeks, (w) => w.receita);
+  const big = best(paid, (x) => x.fee);
+  const receitaTotal = solOf(paid);
+  return {
+    primeira: paid[0]?.t ?? null,
+    diasComLimpeza: daily.length,
+    melhorDia: bd ? { dia: bd.dia, receita: bd.receita, limpezas: bd.limpezas } : null,
+    maisLimpezasDia: ld ? { dia: ld.dia, limpezas: ld.limpezas } : null,
+    melhorSemana: bw ? { inicio: bw.inicio, receita: bw.receita } : null,
+    maiorLimpeza: big ? { t: big.t, volume: big.fee / LAMPORTS / FEE_SHARE } : null,
+    receitaTotal,
+    volumeTotal: receitaTotal / FEE_SHARE,
+    limpezasTotal: paid.length,
+    clientesTotal: firstSeenOf(paid).size,
+    sucesso: paid.length + failed.length ? paid.length / (paid.length + failed.length) : null,
+  };
+}
+
+// Transações com erro por dia (para a série de desempenho), alinhadas aos dias de `daily`.
+export function failuresByDay(failed: Array<{ t: number }>, daily: DayPoint[]): number[] {
+  const m = new Map<string, number>();
+  for (const f of failed) if (Number.isFinite(f.t)) m.set(utcDay(f.t), (m.get(utcDay(f.t)) ?? 0) + 1);
+  return daily.map((d) => m.get(d.dia) ?? 0);
+}
+
+// Atividade a partir só da lista de assinaturas (sem baixar cada transação): toda transação que tocou a carteira da
+// taxa, com ou sem erro. Inclui o que ainda não foi lido e também poeira mandada por terceiros (pouca perto do uso).
+export type Seen = { t: number; ok: boolean; w?: number };
+export function activityByDay(seen: Seen[], daily: DayPoint[]): { ok: number[]; erro: number[] } {
+  const ok = new Map<string, number>();
+  const erro = new Map<string, number>();
+  for (const s of seen) {
+    if (!Number.isFinite(s.t)) continue;
+    const m = s.ok ? ok : erro;
+    m.set(utcDay(s.t), (m.get(utcDay(s.t)) ?? 0) + 1);
+  }
+  return { ok: daily.map((d) => ok.get(d.dia) ?? 0), erro: daily.map((d) => erro.get(d.dia) ?? 0) };
+}
+export type ActivityTotals = { total: number; ok: number; erro: number; sucesso: number | null; porCarteira: Array<{ total: number; ok: number }> };
+export function activityTotals(seen: Seen[]): ActivityTotals {
+  const valid = seen.filter((s) => Number.isFinite(s.t));
+  const ok = valid.filter((s) => s.ok).length;
+  const porCarteira: Array<{ total: number; ok: number }> = [];
+  for (const s of valid) {
+    const w = s.w ?? 0;
+    porCarteira[w] ??= { total: 0, ok: 0 };
+    porCarteira[w]!.total++;
+    if (s.ok) porCarteira[w]!.ok++;
+  }
+  for (let i = 0; i < porCarteira.length; i++) porCarteira[i] ??= { total: 0, ok: 0 };
+  return { total: valid.length, ok, erro: valid.length - ok, sucesso: valid.length ? ok / valid.length : null, porCarteira };
+}
+
+export type Price = { usd: number; brl: number };
+// Preço do SOL (api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd,brl). Fora de faixa = sem preço.
+export function parsePrice(json: unknown): Price | null {
+  const s = (json as any)?.solana;
+  const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0.01 && v < 1e6;
+  return ok(s?.usd) && ok(s?.brl) ? { usd: s.usd, brl: s.brl } : null;
 }

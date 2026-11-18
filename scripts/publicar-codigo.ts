@@ -24,10 +24,12 @@ export const PUBLIC_ROOT_FILES = ['package.json', 'package-lock.json', 'tsconfig
 // Lista privada das palavras proibidas: só no repositório de trabalho, nunca publicada.
 export const FORBIDDEN_FILE = 'scripts/publicar-proibidos.txt';
 export const EXCLUDED = ['scripts/servir-site.mjs', FORBIDDEN_FILE];
+// Painel privado do autor (admin/, admin.clurn.app): fica fora, e os testes dele também (sem admin/ eles não rodam).
+export const EXCLUDED_DIRS = ['test/admin/'];
 
 export function publicFiles(root = ROOT): string[] {
   const all = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
-  return all.filter((f) => !EXCLUDED.includes(f) && (PUBLIC_ROOT_FILES.includes(f) || PUBLIC_DIRS.some((d) => f.startsWith(d))));
+  return all.filter((f) => !EXCLUDED.includes(f) && !EXCLUDED_DIRS.some((d) => f.startsWith(d)) && (PUBLIC_ROOT_FILES.includes(f) || PUBLIC_DIRS.some((d) => f.startsWith(d))));
 }
 
 // Palavras proibidas guardadas só como hash (16 primeiros dígitos do SHA-256): nomes e endereços que ligariam o

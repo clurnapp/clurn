@@ -32,3 +32,6 @@ src/app/rpc-embutido.json
 # wrangler: estado local do proxy (proxy/) e da publicação do site; segredos de teste local (.dev.vars teria a chave)
 .wrangler/
 .dev.vars*
+
+# painel privado: arquivos gerados por admin/gerar.ts
+admin/publico/
