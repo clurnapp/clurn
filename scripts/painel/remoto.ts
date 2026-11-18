@@ -15,6 +15,50 @@ export function priceFrom(jup: unknown, fx: unknown): Price | null {
   return parsePrice({ solana: { usd, brl: usd * rate } });
 }
 
+// Créditos do Helius (admin/worker.ts, heliusCredits): uma linha por chave e as contas de quanto ainda dá para limpar.
+// - Carteiras: créditos restantes das chaves do APP (a do painel não serve ao app) ÷ custo por carteira do fluxo completo
+//   (RUN_COSTS.fullCreditsPerWallet, src/app/eta.ts), mais a descoberta de cada frase de 100 (RUN_COSTS.discoveryReqPerFrase).
+// - Transações: a proporção da primeira limpeza real, 83 transações para 92 carteiras (docs/aprendizados.md, 30/10/2026).
+// É estimativa: frase com muita moeda ou fee gasta mais; o número oficial de cada chave é o do Helius.
+export const TX_PER_WALLET = 83 / 92;
+export type HeliusRow = { nome: string; app: boolean; ok: boolean; restantes: number | null; limite: number | null; usados: number | null; renovaEm: string | null; motivo: string | null };
+export function heliusSummary(list: unknown, custo: unknown) {
+  const rows: HeliusRow[] = [];
+  for (const r of Array.isArray(list) ? list.slice(0, 10) : []) {
+    if (!r || typeof r.nome !== 'string') continue;
+    const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null);
+    const ok = r.status === 'ok' && n(r.restantes) !== null;
+    rows.push({
+      nome: r.nome.slice(0, 30),
+      app: r.app === true,
+      ok,
+      restantes: ok ? n(r.restantes) : null,
+      limite: ok ? n(r.limite) : null,
+      usados: ok ? n(r.usados) : null,
+      renovaEm: ok && typeof r.renovaEm === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.renovaEm) ? r.renovaEm : null,
+      motivo: ok ? null : typeof r.motivo === 'string' ? r.motivo : typeof r.status === 'string' ? r.status : 'erro',
+    });
+  }
+  const perWallet = typeof (custo as any)?.carteira === 'number' && (custo as any).carteira > 0 ? (custo as any).carteira : null;
+  const perFrase = typeof (custo as any)?.frase === 'number' && (custo as any).frase >= 0 ? (custo as any).frase : 0;
+  const app = rows.filter((r) => r.app && r.ok);
+  const restantes = app.reduce((a, r) => a + (r.restantes ?? 0), 0);
+  const limite = app.reduce((a, r) => a + (r.limite ?? 0), 0);
+  // uma frase de 100 temporárias custa a descoberta + 100 carteiras; as carteiras saem da mesma conta
+  const porFrase = perWallet ? perFrase + 100 * perWallet : null;
+  const carteiras = perWallet && porFrase ? Math.floor((restantes / porFrase) * 100) : null;
+  return {
+    chaves: rows,
+    restantes: app.length ? restantes : null,
+    limite: app.length ? limite : null,
+    carteiras,
+    frases: porFrase ? Math.floor(restantes / porFrase) : null,
+    transacoes: carteiras === null ? null : Math.floor(carteiras * TX_PER_WALLET),
+    porCarteira: perWallet,
+    semDados: rows.length === 0,
+  };
+}
+
 const parse = (s: unknown): unknown => {
   if (typeof s !== 'string') return null;
   try {
@@ -85,5 +129,5 @@ export function montar(b: any, now = Date.now()) {
     saldo: known.length ? known.reduce((a, s) => a + s, 0) : null,
     demo: false,
   });
-  return { ...data, leitura: { lendo, carteira: '', lidas, total } };
+  return { ...data, leitura: { lendo, carteira: '', lidas, total }, helius: heliusSummary(b?.helius, b?.custo) };
 }

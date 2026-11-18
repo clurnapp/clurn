@@ -31,11 +31,14 @@ export const EXPLORERS = ['solscan.io', 'etherscan.io', 'basescan.org', 'bscscan
 // suporte oficial no Telegram (16/11/2026): só este endereço exato abre; outro t.me (de um golpista que conseguisse
 // pôr um link na página) não sai do app
 export const SUPPORT_URL = 'https://t.me/clurnapp';
+// compartilhar o resultado (18/11/2026): só a tela de escrever post do X, só com o texto (sem outro parâmetro)
+export const SHARE_URL = 'https://x.com/intent/post';
 export function isExternalLink(url: string): boolean {
   try {
     const u = new URL(url);
     if (u.protocol !== 'https:' || u.port !== '' || u.username || u.password) return false;
     if (u.hostname === 't.me') return u.pathname.replace(/\/$/, '') === '/clurnapp' && u.search === '' && u.hash === '';
+    if (u.hostname === 'x.com') return u.pathname === '/intent/post' && u.hash === '' && [...u.searchParams.keys()].join() === 'text' && (u.searchParams.get('text') ?? '').length <= 1000;
     return EXPLORERS.includes(u.hostname);
   } catch {
     return false;

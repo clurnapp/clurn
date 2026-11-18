@@ -455,14 +455,19 @@ td.num, th.num { text-align: right; }
 .support-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .support-btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 9px 16px; }
 .support-btn .tg-ico, .support-btn .tg-ico svg { width: 18px; height: 18px; display: block; }
-.support-btn svg, .support-top svg { fill: #29a9eb; stroke: none; }
+.support-btn svg { fill: #29a9eb; stroke: none; }
 .support-safe { margin: 0; font-size: .8rem; color: var(--faint); flex: 1 1 220px; }
 .support-top { text-decoration: none; }
-.support-top svg { width: 18px; height: 18px; }
+.support-top:hover, .support-top:focus-visible { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
 .wait-line { color: var(--text); }
 .wait-line::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-right: 8px; vertical-align: middle; animation: wait-pulse 1.2s ease-in-out infinite; }
 @keyframes wait-pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .wait-line::before { animation: none; } }
+/* compartilhar o resultado (tela final) */
+.share { margin: 28px auto 36px; max-width: 640px; padding: 22px 0 26px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; }
+.share-title { font: 600 1.15rem/1.3 var(--display); margin: 0 0 4px; }
+.share-img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; margin: 16px 0; border-radius: 16px; box-shadow: 0 10px 40px rgba(14, 13, 20, .28); background: #0E0D14; }
+.share-status:empty { display: none; }
 /* recibo da simulação, em grupos */
 #sim-recibo { margin-top: 24px; }
 #sim-recibo:empty { display: none; }
@@ -551,7 +556,7 @@ td.num, th.num { text-align: right; }
     <!-- sons de aviso (etapa, envio, fim): ligados por padrão; o título diz o estado, o nome fica fixo (aria-pressed) -->
     <button type="button" class="fx-toggle snd" id="snd-toggle" aria-pressed="true" title="Sons ligados: clique para silenciar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="waves" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8"/><path class="off" d="M4 4l16 16"/></svg><span class="sr" data-i18n="pref.sound">Sons de aviso</span></button>
     <!-- suporte oficial no Telegram: sempre à mão, mesmo sem erro (o href vem do SUPPORT_URL do script: uma fonte só) -->
-    <a class="fx-toggle support-top" id="support-top" target="_blank" rel="noopener noreferrer" data-i18n-title="support.title" title="Suporte do Clurn no Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 4.3 2.9 11.4c-.9.4-.9 1.6.1 1.9l4.6 1.5 1.8 5.5c.2.7 1.1.9 1.6.4l2.6-2.5 4.8 3.5c.6.4 1.4.1 1.6-.6l3-14.6c.2-.9-.7-1.6-1.6-1.2zM9.6 14.3l-.5 3.6-1.2-3.8 9.6-6.6-7.9 6.8z"/></svg><span class="sr" data-i18n="support.title">Suporte do Clurn no Telegram</span></a>
+    <a class="fx-toggle support-top" id="support-top" target="_blank" rel="noopener noreferrer" data-i18n-title="support.title" title="Suporte do Clurn no Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.5 3.5 2.8 10.7c-.6.2-.6 1.1 0 1.3l4.7 1.7 1.8 5.6c.2.6 1 .8 1.4.3l2.7-2.7 4.8 3.6c.5.4 1.3.1 1.4-.5l3-15.3c.1-.7-.5-1.2-1.1-1z"/><path d="m7.5 13.7 9.9-6.9-7.6 8.2"/></svg><span class="sr" data-i18n="support.title">Suporte do Clurn no Telegram</span></a>
     <button type="button" class="fx-toggle" id="fx-toggle" aria-pressed="true" data-i18n-title="pref.fx" title="Efeito de fundo"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="waves" d="M4.5 15c2.5-3 5-3 7.5 0s5 3 7.5 0M4.5 9c2.5-3 5-3 7.5 0s5 3 7.5 0"/><path class="off" d="M4 4l16 16"/></svg><span class="sr" data-i18n="pref.fx">Efeito de fundo</span></button>
   </div>
 </header>
@@ -1123,6 +1128,18 @@ const I18N = {
     'exec.lede': 'Não feche esta aba nem o terminal até terminar.',
     'exec.progress': (p) => `Executando… ${p.done} de ${p.total} passos. Não feche esta aba nem o terminal.`,
     'exec.done': 'Pronto',
+    'share.title': 'Compartilhe o resultado',
+    'share.lede': 'A imagem mostra só o total e quantas carteiras. Nenhum endereço.',
+    'share.x': 'Postar no X',
+    'share.copy': 'Copiar imagem',
+    'share.copied': 'Imagem copiada. No X, cole com Ctrl+V antes de postar.',
+    'share.copiedOnly': 'Imagem copiada.',
+    'share.copyFail': 'Não deu para copiar a imagem; o texto do post vai sem ela.',
+    'share.text': ({ sol, n }) => `Recuperei ${sol} SOL de ${n} ${n === 1 ? 'carteira antiga' : 'carteiras antigas'} com @clurnapp 🧹\n\nclurn.app`,
+    'share.alt': ({ sol, n }) => `Recuperei ${sol} SOL de ${n} ${n === 1 ? 'carteira' : 'carteiras'}`,
+    'share.img.label': 'RECUPEREI',
+    'share.img.sub': ({ n, txs }) => `de ${n} ${n === 1 ? 'carteira temporária' : 'carteiras temporárias'} · ${txs} ${txs === 1 ? 'transação' : 'transações'}`,
+    'share.img.safe': 'A frase nunca saiu do meu computador.',
     'exec.aborted': 'Execução interrompida por segurança',
     'exec.doneLede': 'Confira os valores e os links das transações abaixo.',
     'exec.received': 'Recebido no destino',
@@ -1724,6 +1741,18 @@ const I18N = {
     'exec.lede': 'Do not close this tab or the terminal until it finishes.',
     'exec.progress': (p) => `Executing… ${p.done} of ${p.total} steps. Do not close this tab or the terminal.`,
     'exec.done': 'Done',
+    'share.title': 'Share your result',
+    'share.lede': 'The image shows only the total and how many wallets. No addresses.',
+    'share.x': 'Post on X',
+    'share.copy': 'Copy image',
+    'share.copied': 'Image copied. On X, paste it with Ctrl+V before posting.',
+    'share.copiedOnly': 'Image copied.',
+    'share.copyFail': 'Could not copy the image; the post text goes without it.',
+    'share.text': ({ sol, n }) => `Just recovered ${sol} SOL from ${n} old burner ${n === 1 ? 'wallet' : 'wallets'} with @clurnapp 🧹\n\nclurn.app`,
+    'share.alt': ({ sol, n }) => `Recovered ${sol} SOL from ${n} ${n === 1 ? 'wallet' : 'wallets'}`,
+    'share.img.label': 'I RECOVERED',
+    'share.img.sub': ({ n, txs }) => `from ${n} burner ${n === 1 ? 'wallet' : 'wallets'} · ${txs} ${txs === 1 ? 'transaction' : 'transactions'}`,
+    'share.img.safe': 'My phrase never left my computer.',
     'exec.aborted': 'Execution stopped for safety',
     'exec.doneLede': 'Check the amounts and the transaction links below.',
     'exec.received': 'Received at destination',
@@ -4532,6 +4561,118 @@ function renderExecHeader() {
   renderRun();
 }
 
+// compartilhar:inicio
+// Compartilhar o resultado (pedido do autor, 18/11/2026): uma imagem com o total que chegou e quantas carteiras, e o
+// post pronto no X marcando o @clurnapp. Só números: nenhum endereço, frase, transação ou nome de carteira.
+const SHARE_INTENT = 'https://x.com/intent/post';
+function shareStats(items, receivedLamports) {
+  const sent = (items ?? []).filter((r) => r && r.status === 'enviado');
+  const wallets = new Set(sent.filter((r) => Number.isInteger(r.walletIndex)).map((r) => `${r.frase ?? 0}:${r.walletIndex}`)).size;
+  let lamports = 0n;
+  try { lamports = BigInt(receivedLamports ?? 0); } catch { lamports = 0n; }
+  return { lamports: lamports > 0n ? lamports : 0n, wallets, txs: sent.length };
+}
+// 4 casas (0,2171); abaixo de 0,0001 SOL, 6 casas, para nunca mostrar 0
+function shareAmount(lamports) {
+  const l = BigInt(lamports ?? 0);
+  return sol(l, l > 0n && l < 100000n ? 6 : 4);
+}
+function shareText(s) {
+  return t('share.text', { sol: shareAmount(s.lamports), n: s.wallets });
+}
+function shareIntentUrl(text) {
+  return `${SHARE_INTENT}?text=${encodeURIComponent(text)}`;
+}
+// compartilhar:fim
+
+// a imagem (1200x675, o tamanho do cartão do X): fundo da marca, o total grande e uma grade com uma ficha por carteira
+async function drawShareCard(canvas, s) {
+  const W = 1200, H = 675;
+  canvas.width = W;
+  canvas.height = H;
+  const x = canvas.getContext('2d');
+  try { await Promise.all(['700 10px "Chakra Petch"', '600 10px "Chakra Petch"', '500 10px "JetBrains Mono"', '400 10px Inter', '600 10px Inter'].map((f) => document.fonts.load(f))); } catch {}
+  const logo = new Image();
+  logo.src = '/assets/clurn-icone-256.png';
+  try { await logo.decode(); } catch {}
+  // fundo
+  x.fillStyle = '#0E0D14';
+  x.fillRect(0, 0, W, H);
+  const g1 = x.createRadialGradient(140, -40, 20, 140, -40, 760);
+  g1.addColorStop(0, 'rgba(118,83,214,.55)'); g1.addColorStop(1, 'rgba(118,83,214,0)');
+  x.fillStyle = g1; x.fillRect(0, 0, W, H);
+  const g2 = x.createRadialGradient(W + 60, H + 80, 20, W + 60, H + 80, 640);
+  g2.addColorStop(0, 'rgba(249,115,22,.30)'); g2.addColorStop(1, 'rgba(249,115,22,0)');
+  x.fillStyle = g2; x.fillRect(0, 0, W, H);
+  const txt = (s2, px, py, font, color, align = 'left', maxW = 9999) => {
+    x.font = font; x.fillStyle = color; x.textAlign = align; x.textBaseline = 'alphabetic';
+    const w = x.measureText(s2).width;
+    if (w > maxW) { x.save(); x.translate(px, py); x.scale(maxW / w, 1); x.fillText(s2, 0, 0); x.restore(); } else x.fillText(s2, px, py);
+  };
+  // marca
+  if (logo.complete && logo.naturalWidth) x.drawImage(logo, 64, 52, 56, 56);
+  txt('clurn', 132, 96, '700 40px "Chakra Petch"', '#F3F1F8');
+  // o número
+  txt(t('share.img.label'), 64, 250, '500 24px "JetBrains Mono"', '#AAA5BB');
+  const amount = `+${shareAmount(s.lamports)}`;
+  x.font = '700 120px "Chakra Petch"';
+  const aw = Math.min(x.measureText(amount).width, 500);
+  const gt = x.createLinearGradient(64, 0, 64 + aw, 0);
+  gt.addColorStop(0, '#86EFAC'); gt.addColorStop(1, '#34D399');
+  x.save(); x.shadowColor = 'rgba(134,239,172,.35)'; x.shadowBlur = 40;
+  txt(amount, 64, 378, '700 120px "Chakra Petch"', gt, 'left', 500);
+  x.restore();
+  txt('SOL', 64 + aw + 16, 378, '700 48px "Chakra Petch"', '#86EFAC');
+  txt(t('share.img.sub', { n: s.wallets, txs: s.txs }), 66, 436, '400 28px Inter', '#E6E3EE', 'left', 630);
+  // rodapé
+  x.fillStyle = '#86EFAC';
+  x.beginPath(); x.roundRect(64, 548, 200, 60, 30); x.fill();
+  txt('clurn.app', 164, 588, '700 30px "Chakra Petch"', '#0E0D14', 'center');
+  txt(t('share.img.safe'), 288, 586, '400 21px Inter', '#8E89A4', 'left', 410);
+  // grade: uma ficha por carteira limpa (até 100), com o check verde
+  const n = Math.max(1, Math.min(100, s.wallets || 1));
+  const cols = 10, size = 30, gap = 8, gx = W - 64 - (cols * size + (cols - 1) * gap), rows = Math.ceil(n / cols);
+  const gy = Math.max(150, (H - (rows * size + (rows - 1) * gap)) / 2);
+  for (let k = 0; k < n; k++) {
+    const px = gx + (k % cols) * (size + gap), py = gy + Math.floor(k / cols) * (size + gap);
+    x.beginPath(); x.roundRect(px, py, size, size, 7);
+    x.fillStyle = 'rgba(134,239,172,.12)'; x.fill();
+    x.lineWidth = 2; x.strokeStyle = 'rgba(134,239,172,.65)'; x.stroke();
+    x.strokeStyle = '#86EFAC'; x.lineWidth = 2.5; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(px + 9, py + 16); x.lineTo(px + 13.5, py + 20.5); x.lineTo(px + 22, py + 10.5); x.stroke();
+  }
+}
+
+// o bloco "Compartilhe" da tela final
+function shareBlock(s) {
+  const canvas = el('canvas', { class: 'share-img', role: 'img', 'aria-label': t('share.alt', { sol: shareAmount(s.lamports), n: s.wallets }) });
+  const status = el('p', { class: 'hint share-status', 'aria-live': 'polite' });
+  const ready = drawShareCard(canvas, s);
+  const copy = async () => {
+    await ready;
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+    if (!blob || !navigator.clipboard || typeof ClipboardItem === 'undefined') throw new Error('sem área de transferência');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+  };
+  const onCopy = async () => {
+    try { await copy(); status.textContent = t('share.copiedOnly'); } catch { status.textContent = t('share.copyFail'); }
+  };
+  const onX = async () => {
+    let copied = false;
+    try { await copy(); copied = true; } catch {}
+    window.open(shareIntentUrl(shareText(s)), '_blank', 'noopener,noreferrer');
+    status.textContent = copied ? t('share.copied') : t('share.copyFail');
+  };
+  return el('div', { class: 'share' },
+    el('p', { class: 'share-title' }, t('share.title')),
+    el('p', { class: 'hint' }, t('share.lede')),
+    canvas,
+    el('div', { class: 'row', style: 'justify-content:center' },
+      el('button', { class: 'btn', type: 'button', id: 'b-share-x', onclick: onX }, t('share.x')),
+      el('button', { class: 'btn quiet', type: 'button', id: 'b-share-copy', onclick: onCopy }, t('share.copy'))),
+    status);
+}
+
 function renderExecFim() {
   const rs = state.execResults;
   const received = rs.filter((r) => r.status === 'enviado').reduce((a, r) => a + BigInt(r.destinationDelta ?? 0), 0n);
@@ -4560,7 +4701,9 @@ function renderExecFim() {
       el('div', { class: 'line' }, el('span', {}, t('exec.ok')), el('span', { class: 'v' }, String(ok))),
       el('div', { class: 'line' }, el('span', {}, t('exec.failed')), el('span', { class: 'v' }, String(failed)))),
     state.reportFile ? el('p', { class: 'hint', style: 'margin-top:14px' }, t('exec.report'), el('span', { class: 'addr' }, state.reportFile)) : null,
-    roundCreditsText(state) ? el('p', { class: 'hint', id: 'x-creditos', style: 'margin-top:8px' }, roundCreditsText(state)) : null));
+    roundCreditsText(state) ? el('p', { class: 'hint', id: 'x-creditos', style: 'margin-top:8px' }, roundCreditsText(state)) : null),
+    // compartilhar: só quando a rodada terminou e algo chegou
+    !state.aborted && received > 0n ? shareBlock(shareStats(rs, received)) : null);
   $('x-fim').classList.remove('hidden');
   renderRun();
 }

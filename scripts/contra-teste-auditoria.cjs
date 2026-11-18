@@ -124,6 +124,17 @@ const R = [
   ['admin: preço sem o câmbio', 'scripts/painel/remoto.ts', '  return parsePrice({ solana: { usd, brl: usd * rate } });', '  return parsePrice({ solana: { usd, brl: usd } });', ADMIN],
   ['admin: câmbio fora da faixa aceito', 'scripts/painel/remoto.ts', "typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0.5 || rate > 100", "typeof rate !== 'number'", ADMIN],
   ['admin: leitor sem pausa com chave', 'admin/worker.ts', 'gapMs: env.RPC_URL?.trim() ? 120 : 300', 'gapMs: env.RPC_URL?.trim() ? 0 : 300', ADMIN],
+  ['admin: leitor encadeia sem ter lido nada', 'admin/worker.ts', '  return r.lidas > 0 || r.listadas > 0 ? now + CHAIN_GAP_MS : null;', '  return now + CHAIN_GAP_MS;', ADMIN],
+  ['admin: leitor nunca encadeia', 'admin/worker.ts', '  return r.lidas > 0 || r.listadas > 0 ? now + CHAIN_GAP_MS : null;', '  return null;', ADMIN],
+  ['admin: créditos do Helius vazam a URL com a chave', 'admin/worker.ts', '({ nome: k.nome, app: k.app, ...(await', '({ nome: k.nome, app: k.app, url: k.url, ...(await', ADMIN],
+  ['admin: chave do painel conta para o app', 'scripts/painel/remoto.ts', '  const app = rows.filter((r) => r.app && r.ok);', '  const app = rows.filter((r) => r.ok);', ADMIN],
+  ['admin: linha de chave com campo a mais aceita', 'admin/worker.ts', 'if (extra !== undefined || !nome ||', 'if (!nome ||', ADMIN],
+  ['admin: créditos com restantes em texto aceitos', 'scripts/painel/remoto.ts', "    const ok = r.status === 'ok' && n(r.restantes) !== null;", "    const ok = r.status === 'ok';", ADMIN],
+  ['compartilhar: link do X com outro parâmetro aceito', 'desktop/regras.ts', "u.hash === '' && [...u.searchParams.keys()].join() === 'text' && ", "u.hash === '' && ", ['test/app/ui-compartilhar.test.ts']],
+  ['compartilhar: qualquer caminho do x.com abre', 'desktop/regras.ts', "return u.pathname === '/intent/post' && u.hash", "return u.hash", ['test/app/ui-compartilhar.test.ts']],
+  ['compartilhar: carteira repetida contada duas vezes', 'src/app/ui/index.html', "const wallets = new Set(sent.filter((r) => Number.isInteger(r.walletIndex)).map((r) => `${r.frase ?? 0}:${r.walletIndex}`)).size;", "const wallets = sent.length;", ['test/app/ui-compartilhar.test.ts']],
+  ['compartilhar: valor negativo na imagem', 'src/app/ui/index.html', "return { lamports: lamports > 0n ? lamports : 0n, wallets, txs: sent.length };", "return { lamports, wallets, txs: sent.length };", ['test/app/ui-compartilhar.test.ts']],
+  ['compartilhar: post sem marcar o @clurnapp', 'src/app/ui/index.html', "carteiras antigas'} com @clurnapp", "carteiras antigas'} com o app", ['test/app/ui-compartilhar.test.ts']],
   ['admin: navegador recebe import de Node', 'admin/gerar.ts', "throw new Error(`${name}: import que não roda no navegador: ${m[1]}`);", 'void 0;', ADMIN],
 ];
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
