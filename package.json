@@ -1,0 +1,30 @@
+{
+  "name": "clurn",
+  "version": "1.0.2",
+  "private": true,
+  "license": "SEE LICENSE IN LICENCA.md",
+  "author": "0xkley",
+  "description": "Limpeza de carteiras temporárias (burners) do Solflare usadas na Pump.fun",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/app/server.ts",
+    "test": "node --test --test-concurrency=4 \"test/**/*.test.ts\"",
+    "test:electron": "node scripts/testar-no-electron.ts",
+    "scan": "node src/cli/scan.ts",
+    "limpar": "node src/cli/limpar.ts",
+    "devnet:preparar": "node scripts/devnet-preparar.ts",
+    "chave": "node src/cli/chave.ts",
+    "admin": "node scripts/painel-admin.ts",
+    "admin:publicar": "node admin/gerar.ts && npx wrangler@4.151.3 deploy --config admin/wrangler.toml",
+    "desktop": "electron .",
+    "empacotar": "node scripts/empacotar.ts"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.10.0"
+  },
+  "main": "desktop/main.ts"
+}

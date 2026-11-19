@@ -1,0 +1,42 @@
+# Proxy de RPC do Clurn. Como publicar: proxy/README.md.
+# Nada secreto aqui: as URLs do Helius com as chaves entram só por `npx wrangler secret put UPSTREAM_URLS`
+# (uma por linha, na ordem de uso; a sem crédito fica pausada e a seguinte assume).
+# Sem account_id: o wrangler usa a conta em que você entrou (`npx wrangler login`).
+
+name = "clurn-rpc"
+main = "entrada.ts"
+compatibility_date = "2025-10-01"
+# node:crypto e Buffer: o verificador do site (proxy/verificar.ts) usa as funções da varredura do app (19/11/2026)
+compatibility_flags = ["nodejs_compat"]
+
+# Só no domínio oficial, que fica embutido no app e nunca muda (trocar chave ou provedor é aqui, sem atualizar o
+# app). Sem *.workers.dev nem URLs de prévia: elas mostram o nome da conta da Cloudflare.
+workers_dev = false
+preview_urls = false
+routes = [{ pattern = "rpc.clurn.app", custom_domain = true }]
+
+# Sem logs do Workers: o corpo dos pedidos tem endereços e transações assinadas. O uso aparece nas métricas do
+# painel (contagem de requisições, erros, tempo), que não guardam o conteúdo.
+[observability]
+enabled = false
+
+# Contador das cotas e das chaves pausadas (proxy/cotas.ts). SQLite: o único tipo de Durable Object do plano grátis.
+[[durable_objects.bindings]]
+name = "COTAS"
+class_name = "Cotas"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Cotas"]
+
+# Limites. Trocar aqui e publicar de novo (`npx wrangler deploy`); não precisa reempacotar o app.
+[vars]
+LIMITE_IP_SEGUNDO = "15"   # requisições por segundo por IP (o app manda no máximo 8/s)
+LIMITE_IP_DIA = "6000"     # créditos por IP por dia UTC (~1,5 frase de 100 temporárias; depois, RPC público)
+TETO_HORA = "15000"        # créditos por hora no total (TETO_DIA/8: uma rajada leva no máximo 1/8 do dia)
+TETO_DIA = "120000"        # créditos por dia no total (chaves do Helius: ~3,7 milhões/mês, ~123 mil/dia)
+PAUSA_CHAVE_MIN = "60"     # minutos que a chave sem crédito fica fora do rodízio antes de ser testada de novo
+MAX_CORPO = "65536"        # bytes por pedido
+MAX_LOTE = "10"            # itens por lote JSON-RPC
+TEMPO_UPSTREAM_MS = "25000"
+VERSAO_MINIMA = ""         # ex.: "0.3.0" recusa app mais velho (versão com defeito conhecido)
